@@ -6,7 +6,7 @@ import traceback
 import time
 
 from core.client import dc
-from core.utils import error_embed, ok_embed, parse_duration, get_nick
+from core.utils import error_embed, ok_embed, parse_duration, get_nick, find
 from core.console import log
 from core.config import cfg
 
@@ -414,6 +414,27 @@ async def _stats_undo_match(
 ): await run_slash(bot.commands.undo_match, interaction=interaction, match_id=match_id)
 
 
+# Diabotical -> ...
+
+@groups.admin_match.subcommand(name='link', description='Link your account to a Diabotical user id.', **guild_kwargs)
+async def _link(
+	interaction: Interaction,
+	diabotical_id: str = SlashOption(name="diabotical_id", description="Your Diabotical user id.")
+): await run_slash(bot.commands.diabotical.link, interaction=interaction, diabotical_id=diabotical_id)
+
+
+@groups.admin_match.subcommand(name='unlink', description='Remove your Diabotical link.', **guild_kwargs)
+async def _unlink(
+	interaction: Interaction
+): await run_slash(bot.commands.diabotical.unlink, interaction=interaction)
+
+
+@groups.admin_match.subcommand(name='link_status', description='Show your Diabotical link.', **guild_kwargs)
+async def _link_status(
+	interaction: Interaction
+): await run_slash(bot.commands.diabotical.link_status, interaction=interaction)
+
+
 # root commands
 
 @dc.slash_command(name='add', description='Add yourself to the channel queues.', **guild_kwargs)
@@ -561,6 +582,22 @@ async def _report(
 		interaction: Interaction,
 		result: str = SlashOption(choices=['loss', 'draw', 'abort'])
 ): await run_slash(bot.commands.report, interaction=interaction, result=result)
+
+
+@dc.slash_command(name='diabotical', description='Diabotical Wipeout actions.', **guild_kwargs)
+async def _diabotical(
+		interaction: Interaction,
+		action: str = SlashOption(choices=['confirm'], description='Action to perform.')
+):
+	async def _run(ctx, *args, _action, **kwargs):
+		match = find(
+			lambda m: m.qc == ctx.qc and ctx.author in m.players, bot.active_matches
+		)
+		if match is None:
+			raise bot.Exc.NotFoundError(ctx.qc.gt("You are not in an active match."))
+		if _action == 'confirm':
+			await match.confirm_series(ctx)
+	await run_slash(_run, interaction=interaction, action=action)
 
 
 @dc.slash_command(name='lastgame', description='Show last game details.', **guild_kwargs)

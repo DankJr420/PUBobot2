@@ -17,6 +17,7 @@ from . import commands
 
 from . import events
 from . import utils
+from . import diabotical
 
 bot_was_ready = False
 bot_ready = False

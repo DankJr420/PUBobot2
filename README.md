@@ -47,3 +47,42 @@ This program is free software: you can redistribute it and/or modify it under th
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
 See 'GNU GPLv3.txt' for GNU General Public License.
+
+### Modification notice
+This work is a modified version of [Leshaka's PUBobot2](https://github.com/Leshaka/PUBobot2) (Copyright (C) 2020 **Leshaka**), distributed under the GNU General Public License version 3.
+
+This project (PUBobot2) has been modified to add Diabotical Wipeout auto-reporting: a `bot/diabotical/` package that links Discord accounts to Diabotical user ids, a best-of-3 series matcher, and a background poller that files results through the existing report path. Original copyright retained; modifications are (C) 2026.
+
+## Diabotical Wipeout auto-reporting
+
+This is a self-hosted replacement for the public PUBobot in GetCracked! Tournaments `#pug`. One PUBobot *match* is a **best-of-3 series** of Diabotical Wipeout team games; each Diabotical `match_id` returned by the API is a single game, so the module reconstructs the series from the games and files the series score through the normal report path (ratings are unchanged — the existing `report_scores`/`register_match_ranked` still run).
+
+### Account linking
+
+The matcher keys off **Diabotical user ids**, never nicknames. Each operator links their Discord account to their Diabotical account once, then joins the pickup normally:
+
+* `/link <user_id>` — validates the id against the Diabotical `users/{id}` endpoint, then stores the mapping (guild + Discord snowflake → Diabotical user id).
+* `/unlink` — removes the mapping.
+* `/link_status` — shows your linked id.
+
+Only members drafted into a match are considered, so an unlinked player on a team simply does not participate in matching.
+
+### The poller and the confirm flow
+
+When a ranked match reaches the *waiting report* stage, a background poller starts (and is stopped when the match finishes, is cancelled, or times out). It watches Diabotical for the finished Wipeout games shared by the drafted players, requires **at least 6 of 8** linked player ids with consistent team assignment, and picks the single candidate that represents the series.
+
+The behaviour is controlled by a single config flag:
+
+```ini
+# In config.cfg
+DIABOTICAL_AUTO_REPORT = False   # default: off
+```
+
+* **`DIABOTICAL_AUTO_REPORT = True`** — once the series clinches (first to 2 games), the aggregated series score `[team0_wins, team1_wins]` is filed automatically through the normal report path.
+* **`DIABOTICAL_AUTO_REPORT = False`** (default) — the bot posts a per-game scoreboard as each game finishes, then a series summary with the match id, map, frags and damage when the series clinches, and **waits for the operator** to confirm. The operator confirms with `/diabotical confirm`, which files the exact series score the poller already posted.
+
+Every rejection (wrong mode, not finished, too few shared ids, disagreeing teams, etc.) is logged so a failed match is visible in the bot's output. Reporting is idempotent on the Diabotical `match_id` — a match already reported will not be re-reported.
+
+### Replacing the public bot in `#pug`
+
+Deploy this instance in the GetCracked! Tournaments guild and add the `/link`, `/unlink`, `/link_status` and `/diabotical` commands to the `#pug` channel (the bot must have access to the channel to post scoreboards). Both the auto-report mode and the manual `/diabotical confirm` fallback are drop-in replacements for the previous `/report` workflow, so no operator-side change is required beyond adding the new commands.

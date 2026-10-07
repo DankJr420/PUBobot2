@@ -156,6 +156,11 @@ class Match:
 		self.ratings = ratings
 		self.winner = None
 		self.scores = [0, 0]
+		# Pending Diabotical Bo3 series score awaiting operator confirmation
+		# (off-mode: the poller posts a summary, the operator confirms via
+		# ``/diabotical confirm``). Empty means no confirmation is pending.
+		self.pending_series_score = None
+		self.pending_series_clinch_game_id = None
 
 		team_names = self.cfg['team_names']
 		team_emojis = self.cfg['team_emojis'] or random.sample(self.TEAM_EMOJIS, 2)
@@ -239,6 +244,11 @@ class Match:
 		elif self.state == self.CHECK_IN:
 			await self.check_in.think(frame_time)
 
+		elif self.state == self.WAITING_REPORT:
+			poller = getattr(self, "diabotical_poller", None)
+			if poller is not None:
+				await poller.think(frame_time)
+
 		elif frame_time > self.lifetime + self.start_time:
 			ctx = bot.SystemContext(self.qc)
 			try:
@@ -273,14 +283,23 @@ class Match:
 			for p in self.teams[2]:
 				self.players.remove(p)
 			await ctx.notice(self.gt("{players} were removed from the match.").format(
-				players=join_and([m.mention for m in self.teams[2]])
-			))
+				players=join_and([m.mention for m in self.teams[2]]))
+			)
 			unpicked = list(self.teams[2])
 			self.teams[2].clear()
 			await self.final_message(ctx)
 			await self.queue.revert(ctx, [], unpicked)
 		else:
 			await self.final_message(ctx)
+
+		# Kick off a Diabotical Wipeout result poller in the background if enabled.
+		import asyncio
+		self.diabotical_poller = None
+		try:
+			loop = asyncio.get_running_loop()
+			loop.create_task(bot.diabotical.report.start_poller(self))
+		except RuntimeError:
+			pass
 
 	async def report_loss(self, ctx, member, draw_flag):
 		if self.state != self.WAITING_REPORT:
@@ -343,6 +362,21 @@ class Match:
 		self.scores = scores
 		await self.finish_match(ctx)
 
+	async def confirm_series(self, ctx):
+		"""Confirm a pending Diabotical Bo3 series result.
+
+		Retrieved from ``pending_series_score`` (set by the off-mode poller's
+		series summary) and filed through ``report_scores`` so ``finish_match``
+		and ``register_match_ranked`` still run. Clears the pending state.
+		"""
+		scores = self.pending_series_score
+		if not scores:
+			ctx.notice(self.gt("There is no Diabotical series result pending confirmation."))
+			return
+		self.pending_series_score = None
+		self.pending_series_clinch_game_id = None
+		await self.report_scores(ctx, list(scores))
+
 	async def print_rating_results(self, ctx, before, after):
 		msg = "```markdown\n"
 		msg += f"{self.queue.name.capitalize()}({self.id}) results\n"
@@ -383,6 +417,9 @@ class Match:
 		self.queue.last_maps += self.maps
 		self.queue.last_maps = self.queue.last_maps[-len(self.maps)*self.queue.cfg.map_cooldown:]
 
+		# The match is over: stop the Diabotical poller so it doesn't keep running.
+		await bot.diabotical.report.stop_poller(self)
+
 		if self.ranked:
 			await bot.stats.register_match_ranked(ctx, self)
 		else:
@@ -400,4 +437,6 @@ class Match:
 			)
 		except DiscordException:
 			pass
+		self.diabotical_poller = None
+		await bot.diabotical.report.stop_poller(self)
 		bot.active_matches.remove(self)
