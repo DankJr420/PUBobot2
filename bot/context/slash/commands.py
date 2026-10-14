@@ -597,7 +597,7 @@ async def _diabotical(
 			raise bot.Exc.NotFoundError(ctx.qc.gt("You are not in an active match."))
 		if _action == 'confirm':
 			await match.confirm_series(ctx)
-	await run_slash(_run, interaction=interaction, action=action)
+	await run_slash(_run, interaction=interaction, _action=action)
 
 
 @dc.slash_command(name='lastgame', description='Show last game details.', **guild_kwargs)

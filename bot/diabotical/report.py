@@ -373,9 +373,12 @@ async def start_poller(match):
     links = await get_links(qc.id)
     poller = DiaboticalPoller(match)
     await poller.setup(links)
-    if len(poller.linked_ids) < matcher.MIN_SHARED_IDS:
+    # Team-size-agnostic: only start polling when over half of the drafted
+    # players are linked (so 3v3, 4v4, etc. all work).
+    if not matcher.majority(len(poller.linked_ids), len(match.players)):
         log.info(f"Skipping Diabotical poll for match {match.id}: only "
-                 f"{len(poller.linked_ids)} linked player(s) drafted.")
+                 f"{len(poller.linked_ids)} of {len(match.players)} drafted "
+                 f"player(s) linked.")
         return
     match.diabotical_poller = poller
     log.info(f"Started Diabotical poller for match {match.id} "

@@ -19,15 +19,20 @@ from . import client as _client
 
 log = logging.getLogger("pubobot.diabotical")
 
-# Minimum number of linked players that must be present in a single game before
-# it is trusted as part of the series. Mirrors "at least 6 of 8" for a full
-# 4v4 team game.
-MIN_SHARED_IDS = 6
-
 # A candidate match_id must appear in the recent match list of at least this many
 # distinct linked players before it is fetched/verified (guards against false
 # positives from the short recent-match list).
 MIN_SHARED_PLAYERS = 2
+
+
+def majority(count, total):
+    """Return True when ``count`` is strictly more than half of ``total``.
+
+    Used to make the linked-player threshold team-size agnostic: instead of a
+    fixed "6 of 8" floor, a game (or the poller itself) is trusted when over
+    half of the relevant players are linked to the match.
+    """
+    return count * 2 > total
 
 # Best-of-3 -> a series is clinched as soon as one team reaches this many wins.
 CLINCH_WINS = 2
@@ -109,8 +114,12 @@ def candidate_game(match, linked_ids, pickup_ts, bot_teams):
 
     clients = match.get("clients", [])
     present = [c for c in clients if c.get("user_id") in linked_ids]
-    if len(present) < MIN_SHARED_IDS:
-        return _reject(f"only {len(present)} of {len(linked_ids)} linked ids in the match")
+    # Team-size-agnostic trust rule: over half of the players in the game must
+    # be linked to this match (replaces the old fixed "6 of 8" floor).
+    if not majority(len(present), len(clients)):
+        return _reject(
+            f"only {len(present)} of {len(clients)} players linked to the match"
+        )
 
     # Draft team_idx agreement (team-level). The present linked players split into
     # a Diabotical team-0 group and a Diabotical team-1 group. Those two groups

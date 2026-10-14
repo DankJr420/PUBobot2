@@ -55,7 +55,10 @@ Pure functions, all values from the API treated as **opaque data** (never fed to
 shell, eval, or the command parser).
 
 Constants:
-- `MIN_SHARED_IDS = 6` — at least 6 of the 8 linked players must be present in a game.
+- `majority(count, total)` — helper returning `count * 2 > total`. The linked-player
+  threshold is team-size **agnostic**: a game (or the poller itself) is trusted when
+  **over half** of the relevant players are linked, instead of a fixed "6 of 8" floor.
+  This is what lets 3v3, 4v4, and any team size auto-report.
 - `MIN_SHARED_PLAYERS = 2` — a `match_id` must appear in the recent list of ≥2 distinct linked players before it is fetched/verified (guards against false positives from the short recent-match list).
 - `CLINCH_WINS = 2` — Bo3 clinches at first-to-2.
 - `FINISHED_STATES = (3, 4)` — Diabotical `match_state` values meaning "concluded".
@@ -70,7 +73,7 @@ Rejects (and why) — each is logged in `poller.reasons`:
 - `team_count != 2` — not a team game.
 - not finished (`match_state` not in `(3,4)`, no `finished=True`, no team `finished`).
 - `create_ts` before the pickup start (`pickup_ts`).
-- fewer than `MIN_SHARED_IDS` linked ids present.
+- fewer than **half** of the game's players are linked to the match (logged as `only N of Y players linked`). Over-half keeps it team-size agnostic.
 - team_idx disagreement with the bot draft (present players don't split cleanly
   direct-or-swapped onto the bot's teams).
 - equal scores (a tie game is not a win for either side).
@@ -230,11 +233,11 @@ against stubbed `bot`/`core` modules.
 ## 11. Debugging checklist (when a series isn't reported)
 
 1. **Was the poller started?** Check logs for `Started Diabotical poller for
-   match {id}`. If it says `Skipping Diabotical poll ... only N linked
-   player(s) drafted`, fewer than 6 players drafted are linked.
+   match {id}`. If it says `Skipping Diabotical poll ... only N of Y drafted
+   player(s) linked`, fewer than half of the drafted players are linked.
 2. **Did any candidate get rejected?** Read `poller.reasons` (logged). Common
    reasons: `not a wipeout match`, `team_count is X`, `not finished`,
-   `before the pickup`, `only N of 8 linked ids`, `team_idx disagreement`,
+   `before the pickup`, `only N of Y players linked`, `team_idx disagreement`,
    `tie`.
 3. **team_idx disagreement?** This is the side-swapping trap. The present
    linked players' Diabotical partition must match the bot draft direct-or-
